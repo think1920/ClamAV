@@ -21,7 +21,7 @@ class FTPClient {
 private:
     int control_socket, ftp_server_port, clamav_port;
     string ftp_server_ip, clamav_ip, current_dir;
-    bool connected, binary_mode;
+    bool connected, binary_mode, lang;
     atomic<bool> running;
 
 public:
@@ -33,9 +33,10 @@ public:
           ftp_server_ip(ftp_ip),
           clamav_ip(clam_ip),
           current_dir("."),
-          connected(false),
-          binary_mode(true),
-          running(true) {}
+          connected(0),
+          binary_mode(1),
+          lang(0),
+          running(1) {}
 
     ~FTPClient() {disconnect();}
 
@@ -161,10 +162,10 @@ public:
 
         dirent* entry;
         while ((entry = readdir(dir)) != nullptr) {
-            std::string name = entry->d_name;
+            string name = entry->d_name;
             if (name == "." || name == "..") continue;
 
-            std::string fullpath = joinPath(current_dir, name);
+            string fullpath = joinPath(current_dir, name);
 
             struct stat st;
             if (stat(fullpath.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -177,11 +178,11 @@ public:
         closedir(dir);
     }
 
-    void changeDirectory(const std::string& dir) {
+    void changeDirectory(const string& dir) {
         if (chdir(dir.c_str()) == 0) {
             char buf[PATH_MAX];
             if (getcwd(buf, sizeof(buf)) != nullptr) {
-                current_dir = std::string(buf);
+                current_dir = string(buf);
             } else {
                 perror("getcwd failed");
                 current_dir = dir;
@@ -192,7 +193,7 @@ public:
         }
     }
 
-    std::string joinPath(const std::string& dir, const std::string& file) {
+    string joinPath(const string& dir, const string& file) {
         if (dir.empty() || dir.back() == '/') return dir + file;
         return dir + "/" + file;
     }
@@ -224,40 +225,48 @@ public:
     }
 
     void showStatus() {
-        cout << "=== FTP Client Status ===" << endl;
-        cout << "FTP Server: " << ftp_server_ip << ":" << ftp_server_port << endl;
-        cout << "ClamAV Agent: " << clamav_ip << ":" << clamav_port << endl;
-        cout << "Connected: " << (connected ? "Yes" : "No") << endl;
-        cout << "Transfer Mode: " << (binary_mode ? "Binary" : "ASCII") << endl;
-        cout << "Current Directory: " << (current_dir.empty() ? "/" : current_dir) << endl;
+        cout << (!lang ? "=== FTP Client Status ===" : "=== Trạng Thái FTP Client ===") << endl;
+        cout << (!lang ? "FTP Server: " : "Máy chủ FTP: ") << ftp_server_ip << ":" << ftp_server_port << endl;
+        cout << (!lang ? "ClamAV Agent: " : "ClamAV Agent: ") << clamav_ip << ":" << clamav_port << endl;
+        cout << (!lang ? "Connected: " : "Đã kết nối: ") << (connected ? (!lang ? "Yes" : "Có") : (!lang ? "No" : "Không")) << endl;
+        cout << (!lang ? "Transfer Mode: " : "Chế độ truyền: ") << (binary_mode ? "Binary" : "ASCII") << endl;
+        cout << (!lang ? "Current Directory: " : "Thư mục hiện tại: ") << (current_dir.empty() ? "/" : current_dir) << endl;
     }
 
     void showHelp() {
-        cout << "\n=== Available FTP Commands ===" << endl;
-        cout << "File Operations:" << endl;
-        cout << "  put <file>       - Upload file (with virus scan)" << endl;
-        cout << "  get <file>       - Download file" << endl;
-        cout << "  mput <pattern>   - Upload multiple files" << endl;
-        cout << "  mget <pattern>   - Download multiple files" << endl;
-        cout << "\nDirectory Operations:" << endl;
-        cout << "  ls               - List files" << endl;
-        cout << "  cd <dir>         - Change directory" << endl;
-        cout << "  pwd              - Show current directory" << endl;
-        cout << "  mkdir <dir>      - Create directory" << endl;
-        cout << "\nSession Management:" << endl;
-        cout << "  open             - Connect to FTP server" << endl;
-        cout << "  close            - Disconnect from FTP server" << endl;
-        cout << "  status           - Show connection status" << endl;
-        cout << "  binary/ascii     - Set transfer mode" << endl;
-        cout << "  quit/exit        - Exit client" << endl;
-        cout << "  help/?           - Show this help" << endl;
+        cout << (!lang ? "\n=== Available FTP Commands ===" : "\n=== Các Lệnh FTP Có Thể Dùng ===") << endl;
+
+        cout << (!lang ? "File Operations:" : "Tác vụ tệp:") << endl;
+        cout << "  put <file>       - " << (!lang ? "Upload file (with virus scan)" : "Tải lên tệp (có quét virus)") << endl;
+        cout << "  get <file>       - " << (!lang ? "Download file" : "Tải xuống tệp") << endl;
+        cout << "  mput <pattern>   - " << (!lang ? "Upload multiple files" : "Tải lên nhiều tệp") << endl;
+        cout << "  mget <pattern>   - " << (!lang ? "Download multiple files" : "Tải xuống nhiều tệp") << endl;
+
+        cout << "\n" << (!lang ? "Directory Operations:" : "Tác vụ thư mục:") << endl;
+        cout << "  ls               - " << (!lang ? "List files" : "Liệt kê tệp") << endl;
+        cout << "  cd <dir>         - " << (!lang ? "Change directory" : "Đổi thư mục") << endl;
+        cout << "  pwd              - " << (!lang ? "Show current directory" : "Hiển thị thư mục hiện tại") << endl;
+        cout << "  mkdir <dir>      - " << (!lang ? "Create directory" : "Tạo thư mục") << endl;
+
+        cout << "\n" << (!lang ? "Session Management:" : "Quản lý phiên:") << endl;
+        cout << "  vn/en            - " << (!lang ? "Vietnamese/English" : "Tiếng Việt/Tiếng Anh") << endl;
+        cout << "  clear            - " << (!lang ? "Clear screen" : "Dọn màn hình") << endl;
+        cout << "  open             - " << (!lang ? "Connect to FTP server" : "Kết nối đến máy chủ FTP") << endl;
+        cout << "  close            - " << (!lang ? "Disconnect from FTP server" : "Ngắt kết nối FTP") << endl;
+        cout << "  status           - " << (!lang ? "Show connection status" : "Xem trạng thái kết nối") << endl;
+        cout << "  binary/ascii     - " << (!lang ? "Set transfer mode" : "Chọn chế độ truyền") << endl;
+        cout << "  quit/exit        - " << (!lang ? "Exit client" : "Thoát khỏi chương trình") << endl;
+        cout << "  help/?           - " << (!lang ? "Show this help" : "Hiển thị hướng dẫn") << endl;
+
         cout << endl;
     }
 
+
     void printHeader() {
-        cout << "\n=== Secure FTP Client with Virus Scanning ===" << endl;
-        cout << "Type 'help' for available commands" << endl;
-    }      
+        cout << (!lang ? "\n=== Secure FTP Client with Virus Scanning ===" : "\n=== FTP Client Bảo Mật với Quét Virus ===") << endl;
+        cout << (!lang ? "Type 'help' for available commands" : "Gõ 'help' để xem các lệnh có sẵn") << endl;
+    }
+  
 
     void runCommandLoop() {
         string command;
@@ -333,6 +342,16 @@ public:
                     cout << "Already connected to FTP server" << endl;
                 }
             }
+            else if (cmd == "vn") {
+                lang = 1;
+                clean();
+                printHeader();
+            }
+            else if (cmd == "en") {
+                lang = 0;
+                clean();
+                printHeader();
+            }
             else if (cmd == "close") {
                 disconnect();
             }
@@ -352,7 +371,7 @@ public:
             }
             else if (cmd == "quit" || cmd == "exit") {
                 running = false;
-                cout << "Shutting Down..." << endl;
+                cout << "Shutting down..." << endl;
                 break;
             }
             else if (cmd == "help" || cmd == "?") {
