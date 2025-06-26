@@ -225,9 +225,17 @@ public:
             cout << "Failed to open data connection" << endl;
             return false;
         }
+        
+        string path = filename;
+
+        size_t pos = path.find_last_of('/');
+        if (pos != string::npos) {
+            string dir = path.substr(0, pos);
+            path = path.substr(pos + 1);
+        }
 
         // Gửi lệnh STOR
-        string stor_command = "STOR " + filename;
+        string stor_command = "STOR " + path;
         string full_command = stor_command + "\r\n";
         send(control_socket, full_command.c_str(), full_command.length(), 0);
 
