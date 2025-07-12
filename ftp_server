@@ -1,0 +1,244 @@
+#include <iostream>
+#include <string>
+#include <cstring>
+#include <vector>
+#include <unordered_map>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <fstream>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+
+#define BACKLOG 5
+#define BUFFER_SIZE 4096
+
+using namespace std;
+
+class FTPServer {
+private:
+    int listen_socket;
+    int port;
+    string root_dir;
+    atomic<bool> running;
+    mutex cout_mutex;
+
+public:
+    FTPServer(int port = 21, string root = "./ftp_root")
+        : listen_socket(-1), port(port), root_dir(root), running(true) {
+        // Ensure root directory exists
+        mkdir(root_dir.c_str(), 0755);
+    }
+
+    ~FTPServer() {
+        stop();
+    }
+
+    bool start() {
+        listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_socket < 0) {
+            cerr << "Error creating socket" << endl;
+            return false;
+        }
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = INADDR_ANY;
+        addr.sin_port = htons(port);
+
+        int opt = 1;
+        setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        if (bind(listen_socket, (sockaddr*)&addr, sizeof(addr)) < 0) {
+            cerr << "Bind failed on port " << port << endl;
+            close(listen_socket);
+            return false;
+        }
+
+        if (listen(listen_socket, BACKLOG) < 0) {
+            cerr << "Listen failed" << endl;
+            close(listen_socket);
+            return false;
+        }
+
+        cout << "FTP Server listening on port " << port << endl;
+        acceptLoop();
+        return true;
+    }
+
+    void stop() {
+        running = false;
+        if (listen_socket >= 0) {
+            close(listen_socket);
+        }
+    }
+
+private:
+    void acceptLoop() {
+        while (running) {
+            sockaddr_in client_addr;
+            socklen_t addr_len = sizeof(client_addr);
+            int client_sock = accept(listen_socket, (sockaddr*)&client_addr, &addr_len);
+            if (client_sock < 0) {
+                continue;
+            }
+            thread(&FTPServer::handleClient, this, client_sock).detach();
+        }
+    }
+
+    void handleClient(int client_sock) {
+        {
+            lock_guard<mutex> lock(cout_mutex);
+            cout << "Client connected: " << client_sock << endl;
+        }
+        sendResponse(client_sock, 220, "Simple FTP Server Ready");
+
+        string cwd = root_dir;
+        bool session_active = true;
+        char buffer[BUFFER_SIZE];
+
+        while (session_active) {
+            memset(buffer, 0, BUFFER_SIZE);
+            int len = recv(client_sock, buffer, BUFFER_SIZE - 1, 0);
+            if (len <= 0) break;
+            string cmdline(buffer);
+            trim(cmdline);
+            if (cmdline.empty()) continue;
+
+            vector<string> tokens = split(cmdline, ' ');
+            string cmd = toUpper(tokens[0]);
+
+            if (cmd == "USER" || cmd == "PASS") {
+                sendResponse(client_sock, 230, "Logged in");
+            } else if (cmd == "PWD") {
+                string path = cwd.substr(root_dir.size());
+                if (path.empty()) path = "/";
+                sendResponse(client_sock, 257, "\"" + path + "\"");
+            } else if (cmd == "CWD") {
+                if (tokens.size() < 2) {
+                    sendResponse(client_sock, 501, "Syntax error in parameters");
+                } else {
+                    string newpath = cwd + "/" + tokens[1];
+                    if (isDirectory(newpath)) {
+                        cwd = newpath;
+                        sendResponse(client_sock, 250, "Directory changed to " + tokens[1]);
+                    } else {
+                        sendResponse(client_sock, 550, "Failed to change directory");
+                    }
+                }
+            } else if (cmd == "LIST") {
+                sendResponse(client_sock, 150, "Opening ASCII mode data connection for file list");
+                // For simplicity, send listing over control connection
+                string listing = directoryListing(cwd);
+                send(client_sock, listing.c_str(), listing.size(), 0);
+                sendResponse(client_sock, 226, "Transfer complete");
+            } else if (cmd == "STOR") {
+                if (tokens.size() < 2) {
+                    sendResponse(client_sock, 501, "Usage: STOR <filename>");
+                } else {
+                    sendResponse(client_sock, 150, "Opening data connection for file upload");
+                    string filename = tokens[1];
+                    string fullpath = cwd + "/" + filename;
+                    ofstream ofs(fullpath, ios::binary);
+                    int bytes;
+                    while ((bytes = recv(client_sock, buffer, BUFFER_SIZE, 0)) > 0) {
+                        ofs.write(buffer, bytes);
+                        if (bytes < BUFFER_SIZE) break;
+                    }
+                    ofs.close();
+                    sendResponse(client_sock, 226, "Upload complete");
+                }
+            } else if (cmd == "RETR") {
+                if (tokens.size() < 2) {
+                    sendResponse(client_sock, 501, "Usage: RETR <filename>");
+                } else {
+                    string filename = tokens[1];
+                    string fullpath = cwd + "/" + filename;
+                    ifstream ifs(fullpath, ios::binary);
+                    if (!ifs) {
+                        sendResponse(client_sock, 550, "File not found");
+                    } else {
+                        sendResponse(client_sock, 150, "Opening data connection for file download");
+                        int bytes;
+                        while ((bytes = ifs.readsome(buffer, BUFFER_SIZE)) > 0) {
+                            send(client_sock, buffer, bytes, 0);
+                        }
+                        ifs.close();
+                        sendResponse(client_sock, 226, "Download complete");
+                    }
+                }
+            } else if (cmd == "QUIT") {
+                sendResponse(client_sock, 221, "Goodbye");
+                session_active = false;
+            } else {
+                sendResponse(client_sock, 502, "Command not implemented");
+            }
+        }
+
+        close(client_sock);
+        lock_guard<mutex> lock(cout_mutex);
+        cout << "Client disconnected: " << client_sock << endl;
+    }
+
+    void sendResponse(int sock, int code, const string& message) {
+        string resp = to_string(code) + " " + message + "\r\n";
+        send(sock, resp.c_str(), resp.size(), 0);
+    }
+
+    static void trim(string& s) {
+        const char* ws = " \t\r\n";
+        s.erase(0, s.find_first_not_of(ws));
+        s.erase(s.find_last_not_of(ws) + 1);
+    }
+
+    static vector<string> split(const string& s, char delim) {
+        vector<string> elems;
+        string item;
+        istringstream iss(s);
+        while (getline(iss, item, delim)) {
+            if (!item.empty()) elems.push_back(item);
+        }
+        return elems;
+    }
+
+    static string toUpper(string s) {
+        transform(s.begin(), s.end(), s.begin(), ::toupper);
+        return s;
+    }
+
+    bool isDirectory(const string& path) {
+        struct stat st;
+        return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    }
+
+    string directoryListing(const string& path) {
+        string listing;
+        DIR* dir = opendir(path.c_str());
+        if (!dir) return listing;
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            string name = entry->d_name;
+            if (name == "." || name == "..") continue;
+            listing += name + "\r\n";
+        }
+        closedir(dir);
+        return listing;
+    }
+};
+
+int main(int argc, char* argv[]) {
+    int port = 21;
+    if (argc > 1) {
+        port = stoi(argv[1]);
+    }
+    FTPServer server(port);
+    if (!server.start()) {
+        cerr << "Failed to start FTP server" << endl;
+        return 1;
+    }
+    return 0;
+}
