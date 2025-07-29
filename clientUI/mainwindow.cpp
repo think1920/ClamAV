@@ -1232,6 +1232,13 @@ void MainWindow::startGmailRemote() {
 }
 bool MainWindow::refreshAccessToken()
 {
+    if (googleClientId.isEmpty() || googleClientSecret.isEmpty())
+        loadGoogleCredentials();
+
+    if (googleRefreshToken.isEmpty()) {
+        qWarning() << "refresh is MT";
+        return false;
+    }
     qint64 now = QDateTime::currentSecsSinceEpoch();
     if (now + kTokenSafeGapSec < googleExpiresAt) return true;
     if (googleRefreshToken.isEmpty()) return false;
@@ -1243,16 +1250,20 @@ bool MainWindow::refreshAccessToken()
     q.addQueryItem("grant_type",    "refresh_token");
 
     QNetworkRequest rq(QUrl("https://oauth2.googleapis.com/token"));
-    rq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    rq.setHeader(QNetworkRequest::ContentTypeHeader,
+                 "application/x-www-form-urlencoded");
     rq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
 
-    QNetworkAccessManager nm;  QEventLoop loop;
-    auto *rp = nm.post(rq, q.toString(QUrl::FullyEncoded).toUtf8());
-    connect(rp,&QNetworkReply::finished,&loop,&QEventLoop::quit);
+    QNetworkReply *rp =
+        networkMgr->post(rq, q.toString(QUrl::FullyEncoded).toUtf8());
+    QEventLoop loop;
+    connect(rp, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
 
-    if (rp->error()!=QNetworkReply::NoError) {
-        qWarning() << "[Gmail] refresh failed:" << rp->errorString();
+    int status = rp->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (rp->error() != QNetworkReply::NoError || status != 200) {
+        qWarning() << "[REFRESH] failed" << status
+                   << rp->errorString() << rp->readAll();
         rp->deleteLater();
         return false;
     }
@@ -1267,7 +1278,7 @@ bool MainWindow::refreshAccessToken()
 QNetworkRequest MainWindow::makeAuthRequest(const QUrl &url)
 {
     if (!refreshAccessToken())
-        qWarning() << "[Gmail] cannot refresh access-token!";
+        qWarning() << "[Gmail] cannot refresh access-token";
     QNetworkRequest rq(url);
     rq.setRawHeader("Authorization","Bearer "+googleAccessToken.toUtf8());
     return rq;
