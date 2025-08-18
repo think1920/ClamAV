@@ -9,7 +9,7 @@
 ## ⚙️ Cài đặt môi trường
 Clone repo về máy:
    ```bash
-   git clone https://github.com/<username>/<repo>.git
+   git clone https://github.com/think1920/EmailRemoteControl.git
    ```
 
 ## 🖥️ Giao diện người dùng (UI)
