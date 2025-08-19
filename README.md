@@ -44,7 +44,7 @@ Giao diện gồm các chức năng chính:
 
 ## 📖 Tài liệu tham khảo
 1. Mai Văn Cường, Trần Trung Dũng, Trần Hồng Ngọc, Lê Ngọc Sơn, Lê Giang Thanh, Trương Thị Mỹ Trang, Đào Anh Tuấn, *Giáo trình mạng máy tính*, NXB Khoa học và kỹ thuật, 2020.  
-[2. Linh Chung Thuy, *Tài liệu thực hành Mạng máy tính*, Trường Đại học Khoa học Tự nhiên, ĐHQG - HCM, 2021.] (https://drive.google.com/drive/folders/1UsrwlIE63XeyMnRljp50NWCkUqijWgt6)
+[2. Linh Chung Thuy, *Tài liệu thực hành Mạng máy tính*, Trường Đại học Khoa học Tự nhiên, ĐHQG - HCM, 2021.](https://drive.google.com/drive/folders/1UsrwlIE63XeyMnRljp50NWCkUqijWgt6)
 
 ---
 
