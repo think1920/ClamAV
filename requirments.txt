@@ -1,0 +1,13 @@
+1. Cài đặt MSYS2 (https://www.msys2.org/)
+
+2. Cập nhật toàn bộ gói trong MSYS2:
+   pacman -Syu
+
+3. Cài đặt OpenCV C++ (UCRT x86_64):
+   pacman -S mingw-w64-ucrt-x86_64-opencv
+
+4. Cài đặt Microsoft Visual Studio 2022 (MSVC toolchain, x86_64)
+   - Chọn workload "Desktop development with C++"
+
+5. Cài đặt Qt Community (MSVC 2022, x86_64)
+   - Tải qua Qt Online Installer (https://www.qt.io/download-qt-installer)
